@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>تحدي القمة - لعبة تسلق الجبال بالمطرقة والقدر</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Cairo', sans-serif;
+      background-color: #0f172a;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    .btn-game {
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+    .btn-game:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
+    }
+    .btn-game:active {
+      transform: translateY(1px) scale(0.97);
+    }
+    @keyframes bannerPop {
+      0% { opacity: 0; transform: translate(-50%, -30px) scale(0.85); }
+      15% { opacity: 1; transform: translate(-50%, 0px) scale(1.03); }
+      85% { opacity: 1; transform: translate(-50%, 0px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -20px) scale(0.95); }
+    }
+    .stage-banner-anim {
+      animation: bannerPop 3.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-white">
+
+  <!-- لوحة الرسم الرئيسية للعبة -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- واجهة المعلومات العلوية (HUD) -->
+  <div id="hud" class="pointer-events-none fixed top-0 left-0 right-0 z-20 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-2">
+    <!-- معلومات المرحلة والارتفاع -->
+    <div class="pointer-events-auto glass-panel rounded-2xl px-3.5 py-2 flex items-center gap-3 sm:gap-4">
+      <div class="flex items-center gap-2">
+        <span id="stageBadge" class="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-amber-500 text-slate-950 font-black text-base shadow">1</span>
+        <div>
+          <div id="stageTitle" class="text-xs sm:text-sm font-black text-amber-300 leading-tight">المرحلة 1: التلال الصخرية</div>
+          <div id="stageDiff" class="text-[11px] text-slate-300">صعوبة: سهلة</div>
+        </div>
+      </div>
+
+      <div class="h-7 w-[1px] bg-white/15"></div>
+
+      <!-- شريط التقدم نحو القمة -->
+      <div class="flex flex-col min-w-[110px] sm:min-w-[150px]">
+        <div class="flex justify-between text-xs font-bold mb-1">
+          <span class="text-slate-300">الارتفاع</span>
+          <span id="heightPercent" class="text-emerald-400">0%</span>
+        </div>
+        <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-white/10">
+          <div id="progressBar" class="h-full bg-gradient-to-l from-amber-400 via-orange-500 to-emerald-400 rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="hidden md:block h-7 w-[1px] bg-white/15"></div>
+
+      <!-- المؤقت -->
+      <div class="hidden md:flex flex-col items-center">
+        <span class="text-[10px] text-slate-400">الوقت</span>
+        <span id="timerText" class="text-sm font-black font-mono text-white">00:00</span>
+      </div>
+    </div>
+
+    <!-- أزرار التحكم السريعة -->
+    <div class="pointer-events-auto flex items-center gap-2">
+      <button id="soundToggleBtn" title="تشغيل / كتم الصوت" class="btn-game glass-panel rounded-xl p-2.5 text-amber-300 hover:bg-slate-800/90 flex items-center gap-1.5 text-xs sm:text-sm font-bold">
+        <span id="soundIcon">🔊</span>
+        <span class="hidden sm:inline">الصوت</span>
+      </button>
+
+      <button id="stageSelectToggleBtn" title="اختيار المرحلة" class="btn-game glass-panel rounded-xl px-3 py-2.5 text-sky-300 hover:bg-slate-800/90 text-xs sm:text-sm font-bold">
+        🗺️ المراحل
+      </button>
+
+      <button id="checkpointBtn" title="العودة لبداية المرحلة الحالية" class="btn-game glass-panel rounded-xl px-3 py-2.5 text-emerald-300 hover:bg-slate-800/90 text-xs sm:text-sm font-bold">
+        🚩 نقطة المرحلة
+      </button>
+
+      <button id="restartBtn" title="إعادة من البداية" class="btn-game glass-panel rounded-xl px-3 py-2.5 text-rose-300 hover:bg-slate-800/90 text-xs sm:text-sm font-bold">
+        🔄 البداية
+      </button>
+    </div>
+  </div>
+
+  <!-- إشعار الانتقال إلى مرحلة جديدة -->
+  <div id="stageBanner" class="hidden pointer-events-none fixed top-24 left-1/2 -translate-x-1/2 z-30 glass-panel rounded-3xl px-7 py-4 text-center border-2 border-amber-400/60 shadow-2xl">
+    <div id="bannerTag" class="text-xs font-extrabold tracking-wider text-amber-400 uppercase mb-1">مرحلة جديدة!</div>
+    <div id="bannerTitle" class="text-xl sm:text-2xl font-black text-white">المرحلة 2: الجرف الحاد</div>
+    <div id="bannerSub" class="text-xs sm:text-sm text-slate-300 mt-1">احذر المنحدرات الضيقة واستخدم المطرقة للتعلق!</div>
+  </div>
+
+  <!-- نافذة اختيار المراحل -->
+  <div id="stageModal" class="hidden fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel rounded-3xl max-w-lg w-full p-6 border border-white/20">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-black text-amber-400">🗺️ اختر مرحلة الانطلاق</h2>
+        <button id="closeStageModalBtn" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold">✕</button>
+      </div>
+      <p class="text-xs sm:text-sm text-slate-300 mb-4">يمكنك الصعود بالتدريج من المرحلة 1 حتى القمة، أو الانتقال مباشرة لتجربة أي مرحلة:</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="stageButtonsGrid">
+        <!-- يتم تعبئتها برمجياً -->
+      </div>
+    </div>
+  </div>
+
+  <!-- شاشة البداية والتعليمات -->
+  <div id="startOverlay" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-panel rounded-3xl max-w-xl w-full p-6 sm:p-8 text-center border border-amber-400/30 shadow-2xl">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 text-3xl shadow-lg mb-4">
+        ⛏️
+      </div>
+      <h1 class="text-2xl sm:text-4xl font-black text-white mb-2">تحدي القمة: القدر والمطرقة</h1>
+      <p class="text-sm sm:text-base text-slate-300 mb-6 leading-relaxed">
+        تسلق الجبل الشاهق وأنت داخل القدر الحديدي! اضرب الصخور بالمطرقة للدفع نحو الأعلى، وتعلّق بالحواف لتجاوز <strong>4 مراحل متدرجة الصعوبة</strong> حتى تبلغ القمة.
+      </p>
+
+      <div class="grid grid-cols-2 gap-2.5 text-right bg-slate-900/70 rounded-2xl p-4 mb-6 border border-white/10 text-xs sm:text-sm">
+        <div class="flex items-center gap-2"><span class="text-amber-400 text-lg">🖱️</span><span><strong>حرك الفأرة / اسحب:</strong> توجيه المطرقة</span></div>
+        <div class="flex items-center gap-2"><span class="text-emerald-400 text-lg">⬇️</span><span><strong>ادفع للأسفل:</strong> قفز القدر للأعلى</span></div>
+        <div class="flex items-center gap-2"><span class="text-sky-400 text-lg">🪝</span><span><strong>علّق المطرقة:</strong> سحب النفس للحواف</span></div>
+        <div class="flex items-center gap-2"><span class="text-rose-400 text-lg">🏔️</span><span><strong>4 مراحل:</strong> تزداد صعوبة وارتفاعاً</span></div>
+      </div>
+
+      <button id="startGameBtn" class="btn-game w-full py-4 rounded-2xl bg-gradient-to-l from-amber-500 via-orange-500 to-amber-500 text-slate-950 font-black text-lg sm:text-xl shadow-xl">
+        🚀 ابدأ التسلق الآن
+      </button>
+    </div>
+  </div>
+
+  <!-- شاشة الفوز عند الوصول إلى القمة -->
+  <div id="victoryOverlay" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="glass-panel rounded-3xl max-w-md w-full p-7 text-center border-2 border-amber-400 shadow-2xl">
+      <div class="text-5xl mb-3">🏆👑</div>
+      <h2 class="text-2xl sm:text-3xl font-black text-amber-400 mb-2">مبروك! وصلت إلى القمة!</h2>
+      <p class="text-sm sm:text-base text-slate-200 mb-5">لقد اجتزت جميع المراحل الأربعة بنجاح وتحديت الجاذبية بالمطرقة والقدر!</p>
+      <div class="bg-slate-900/80 rounded-2xl p-4 mb-6 border border-white/10 flex justify-around">
+        <div>
+          <div class="text-xs text-slate-400">الزمن المستغرق</div>
+          <div id="finalTimeText" class="text-xl font-black text-emerald-400 font-mono">00:00</div>
+        </div>
+        <div class="w-[1px] bg-white/10"></div>
+        <div>
+          <div class="text-xs text-slate-400">عدد الضربات</div>
+          <div id="finalHitsText" class="text-xl font-black text-amber-400">0</div>
+        </div>
+      </div>
+      <button id="playAgainBtn" class="btn-game w-full py-3.5 rounded-2xl bg-gradient-to-l from-emerald-500 to-teal-500 text-slate-950 font-black text-lg">
+        🔄 العب مجدداً من البداية
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * =========================================================================
+     * محرك المؤثرات الصوتية الإجرائي (Web Audio API)
+     * يولّد أصوات اصطدام المطرقة بالصخر والخشب والجليد، صوت الاحتكاك، وصفارة النجاح
+     * =========================================================================
+     */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.lastScrapeTime = 0;
+        this.lastWhooshTime = 0;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggleMute() {
+        this.muted = !this.muted;
+        return this.muted;
+      }
+
+      // صوت ضربة المطرقة حسب نوع السطح (صخر، خشب، جليد، معدن) وقوة الضربة
+      playImpact(material = 'rock', intensity = 0.6) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const vol = Math.min(0.65, Math.max(0.08, intensity * 0.55));
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        if (material === 'ice') {
+          // رنين بلوري حاد للجليد
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1150 + Math.random() * 250, now);
+          osc.frequency.exponentialRampToValueAtTime(420, now + 0.16);
+        } else if (material === 'wood') {
+          // صوت خشبي دافئ
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(240 + Math.random() * 40, now);
+          osc.frequency.exponentialRampToValueAtTime(85, now + 0.14);
+        } else if (material === 'gold') {
+          // رنين معدني ذهبي للقمة
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, now);
+          osc.frequency.exponentialRampToValueAtTime(660, now + 0.35);
+        } else {
+          // صوت اصطدام معدني ثقيل بالصخر
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(340 + Math.random() * 70, now);
+          osc.frequency.exponentialRampToValueAtTime(65, now + 0.18);
+
+          // نغمة معدنية مرافقة للمطرقة
+          const metalOsc = this.ctx.createOscillator();
+          const metalGain = this.ctx.createGain();
+          metalOsc.type = 'sine';
+          metalOsc.frequency.setValueAtTime(920 + Math.random() * 140, now);
+          metalOsc.frequency.exponentialRampToValueAtTime(310, now + 0.09);
+          metalGain.gain.setValueAtTime(vol * 0.45, now);
+          metalGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          metalOsc.connect(metalGain);
+          metalGain.connect(this.ctx.destination);
+          metalOsc.start(now);
+          metalOsc.stop(now + 0.09);
+        }
+
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.19);
+      }
+
+      // صوت احتكاك المطرقة أثناء السحب على الحافة
+      playScrape(speed = 1) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        if (now - this.lastScrapeTime < 0.07) return;
+        this.lastScrapeTime = now;
+
+        const bufferSize = this.ctx.sampleRate * 0.06;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.5));
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1400 + Math.min(1200, speed * 120);
+        filter.Q.value = 3.5;
+
+        const gain = this.ctx.createGain();
+        gain.gain.value = Math.min(0.16, 0.03 + speed * 0.015);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(now);
+      }
+
+      // صوت أرجحة المطرقة السريعة في الهواء
+      playWhoosh() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        if (now - this.lastWhooshTime < 0.24) return;
+        this.lastWhooshTime = now;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(190, now);
+        osc.frequency.exponentialRampToValueAtTime(75, now + 0.14);
+
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
+      }
+
+      // لحن الانتقال لمرحلة جديدة
+      playStageUp() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        const now = this.ctx.currentTime;
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+
+          gain.gain.setValueAtTime(0.001, now + idx * 0.09);
+          gain.gain.linearRampToValueAtTime(0.22, now + idx * 0.09 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.35);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.09);
+          osc.stop(now + idx * 0.09 + 0.36);
+        });
+      }
+
+      // لحن الفوز بالوصول إلى القمة
+      playVictory() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const melody = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+        const times = [0, 0.12, 0.24, 0.36, 0.54, 0.68];
+        const now = this.ctx.currentTime;
+
+        melody.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + times[i]);
+
+          gain.gain.setValueAtTime(0.25, now + times[i]);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + times[i] + 0.45);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + times[i]);
+          osc.stop(now + times[i] + 0.46);
+        });
+      }
+    }
+
+    /**
+     * =========================================================================
+     * تعريف المراحل الأربعة (4 مراحل متدرجة الصعوبة)
+     * =========================================================================
+     */
+    const STAGES = [
+      {
+        id: 1,
+        name: 'المرحلة 1: التلال الصخرية',
+        difficulty: 'سهلة - للتدريب والانطلاق',
+        hint: 'اضرب الأرض بالمطرقة لدفع القدر نحو الأعلى!',
+        startY: 0,
+        endY: -2200,
+        spawn: { x: 0, y: -90 },
+        skyTop: '#38bdf8',
+        skyBottom: '#bae6fd',
+        mountainColor: '#64748b',
+        badgeColor: 'bg-emerald-500'
+      },
+      {
+        id: 2,
+        name: 'المرحلة 2: الجرف الحاد',
+        difficulty: 'متوسطة - منحدرات وفجوات',
+        hint: 'استخدم رأس المطرقة للتعلق بالحواف الخشبية والصخرية!',
+        startY: -2200,
+        endY: -4700,
+        spawn: { x: -120, y: -2290 },
+        skyTop: '#ea580c',
+        skyBottom: '#fed7aa',
+        mountainColor: '#7c2d12',
+        badgeColor: 'bg-amber-500'
+      },
+      {
+        id: 3,
+        name: 'المرحلة 3: القمم الجليدية',
+        difficulty: 'صعبة - جليد منزلق وصخور معلقة',
+        hint: 'انتبه! الجليد الأزرق زلق جداً، اثبت بالمطرقة!',
+        startY: -4700,
+        endY: -7400,
+        spawn: { x: 140, y: -4790 },
+        skyTop: '#1e3a8a',
+        skyBottom: '#7dd3fc',
+        mountainColor: '#334155',
+        badgeColor: 'bg-sky-400'
+      },
+      {
+        id: 4,
+        name: 'المرحلة 4: قمة التحدي',
+        difficulty: 'قصوى - منصات متحركة وقمم شاهقة',
+        hint: 'المرحلة الأخيرة! القمة الذهبية تنتظرك في الأعلى!',
+        startY: -7400,
+        endY: -10200,
+        spawn: { x: 0, y: -7490 },
+        skyTop: '#090d16',
+        skyBottom: '#312e81',
+        mountainColor: '#1e1b4b',
+        badgeColor: 'bg-rose-500'
+      }
+    ];
+
+    const SUMMIT_Y = -10200;
+
+    /**
+     * =========================================================================
+     * بناء خريطة العالم والمنصات لكل مرحلة
+     * =========================================================================
+     */
+    function createLevelPlatforms() {
+      const platforms = [];
+
+      // أرضية البداية العريضة
+      platforms.push({ x: -700, y: 0, w: 1400, h: 300, type: 'rock', stage: 1 });
+      // جدران جانبية سفلية لمنع السقوط خارج العالم في البداية
+      platforms.push({ x: -850, y: -2600, w: 180, h: 2900, type: 'rock', stage: 1 });
+      platforms.push({ x: 670, y: -2600, w: 180, h: 2900, type: 'rock', stage: 1 });
+
+      // ---------------- المرحلة 1: التلال الصخرية (0 إلى -2200) ----------------
+      platforms.push({ x: -260, y: -170, w: 240, h: 55, type: 'rock', stage: 1 });
+      platforms.push({ x: 110, y: -330, w: 260, h: 55, type: 'rock', stage: 1 });
+      platforms.push({ x: -220, y: -510, w: 250, h: 55, type: 'wood', stage: 1 });
+      platforms.push({ x: 140, y: -700, w: 240, h: 60, type: 'rock', stage: 1 });
+      platforms.push({ x: -320, y: -890, w: 270, h: 60, type: 'rock', stage: 1 });
+      platforms.push({ x: 40, y: -1080, w: 230, h: 55, type: 'wood', stage: 1 });
+      platforms.push({ x: -280, y: -1280, w: 220, h: 60, type: 'rock', stage: 1 });
+      platforms.push({ x: 90, y: -1480, w: 250, h: 60, type: 'rock', stage: 1 });
+      platforms.push({ x: -210, y: -1690, w: 240, h: 55, type: 'wood', stage: 1 });
+      platforms.push({ x: 120, y: -1900, w: 240, h: 60, type: 'rock', stage: 1 });
+      // منصة استراحة وبوابة المرحلة 2
+      platforms.push({ x: -340, y: -2180, w: 680, h: 70, type: 'rock', stage: 1, checkpoint: 2 });
+
+      // ---------------- المرحلة 2: الجرف الحاد (-2200 إلى -4700) ----------------
+      platforms.push({ x: 170, y: -2400, w: 180, h: 50, type: 'rock', stage: 2 });
+      platforms.push({ x: -270, y: -2610, w: 170, h: 50, type: 'wood', stage: 2 });
+      // جدار للتسلق بالخطاف
+      platforms.push({ x: 60, y: -2920, w: 80, h: 240, type: 'rock', stage: 2 });
+      platforms.push({ x: 140, y: -2920, w: 170, h: 50, type: 'wood', stage: 2 });
+      platforms.push({ x: -250, y: -3140, w: 180, h: 50, type: 'rock', stage: 2 });
+      platforms.push({ x: 90, y: -3370, w: 165, h: 48, type: 'wood', stage: 2 });
+      platforms.push({ x: -320, y: -3600, w: 175, h: 50, type: 'rock', stage: 2 });
+      // مدخنة صخرية مزدوجة
+      platforms.push({ x: -120, y: -4020, w: 65, h: 320, type: 'rock', stage: 2 });
+      platforms.push({ x: 145, y: -4020, w: 65, h: 320, type: 'rock', stage: 2 });
+      platforms.push({ x: -120, y: -4060, w: 150, h: 45, type: 'wood', stage: 2 });
+      platforms.push({ x: 130, y: -4290, w: 175, h: 50, type: 'rock', stage: 2 });
+      platforms.push({ x: -220, y: -4490, w: 185, h: 50, type: 'wood', stage: 2 });
+      // منصة استراحة وبوابة المرحلة 3
+      platforms.push({ x: -280, y: -4680, w: 620, h: 70, type: 'rock', stage: 2, checkpoint: 3 });
+
+      // ---------------- المرحلة 3: القمم الجليدية (-4700 إلى -7400) ----------------
+      platforms.push({ x: -240, y: -4910, w: 190, h: 48, type: 'ice', stage: 3 });
+      platforms.push({ x: 120, y: -5140, w: 180, h: 48, type: 'ice', stage: 3 });
+      platforms.push({ x: -180, y: -5380, w: 150, h: 45, type: 'wood', stage: 3 });
+      platforms.push({ x: 150, y: -5620, w: 175, h: 48, type: 'ice', stage: 3 });
+      platforms.push({ x: -280, y: -5860, w: 170, h: 48, type: 'ice', stage: 3 });
+      // صخور طافية جليدية متدرجة
+      platforms.push({ x: -30, y: -6100, w: 135, h: 45, type: 'ice', stage: 3 });
+      platforms.push({ x: 210, y: -6330, w: 145, h: 45, type: 'wood', stage: 3 });
+      platforms.push({ x: -160, y: -6570, w: 155, h: 48, type: 'ice', stage: 3 });
+      platforms.push({ x: 110, y: -6820, w: 150, h: 48, type: 'ice', stage: 3 });
+      platforms.push({ x: -210, y: -7080, w: 165, h: 48, type: 'wood', stage: 3 });
+      // منصة استراحة وبوابة المرحلة 4
+      platforms.push({ x: -260, y: -7380, w: 540, h: 70, type: 'rock', stage: 3, checkpoint: 4 });
+
+      // ---------------- المرحلة 4: قمة التحدي (-7400 إلى -10200) ----------------
+      platforms.push({ x: 150, y: -7620, w: 145, h: 45, type: 'rock', stage: 4 });
+      // منصة متحركة أفقياً
+      platforms.push({ x: -140, y: -7870, w: 150, h: 42, type: 'wood', stage: 4, moveX: 160, moveSpeed: 1.5, baseX: -140 });
+      platforms.push({ x: 180, y: -8130, w: 135, h: 45, type: 'ice', stage: 4 });
+      platforms.push({ x: -230, y: -8380, w: 135, h: 45, type: 'rock', stage: 4 });
+      // منصة متحركة ثانية
+      platforms.push({ x: 20, y: -8640, w: 145, h: 42, type: 'wood', stage: 4, moveX: 180, moveSpeed: 1.9, baseX: 20 });
+      platforms.push({ x: -260, y: -8900, w: 130, h: 45, type: 'ice', stage: 4 });
+      platforms.push({ x: 130, y: -9160, w: 130, h: 45, type: 'rock', stage: 4 });
+      // العقبة الأخيرة قبل القمة
+      platforms.push({ x: -90, y: -9430, w: 130, h: 42, type: 'wood', stage: 4, moveX: 140, moveSpeed: 2.1, baseX: -90 });
+      platforms.push({ x: 140, y: -9700, w: 125, h: 45, type: 'rock', stage: 4 });
+      platforms.push({ x: -150, y: -9960, w: 135, h: 45, type: 'wood', stage: 4 });
+
+      // ---------------- القمة الذهبية النهائية (-10200) ----------------
+      platforms.push({ x: -280, y: SUMMIT_Y, w: 560, h: 90, type: 'gold', stage: 4, isSummit: true });
+
+      return platforms;
+    }
+
+    /**
+     * =========================================================================
+     * المحرك الرئيسي للعبة (Physics + Canvas Rendering + Controls)
+     * =========================================================================
+     */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const sound = new SoundEngine();
+
+    // عناصر الواجهة
+    const stageBadge = document.getElementById('stageBadge');
+    const stageTitle = document.getElementById('stageTitle');
+    const stageDiff = document.getElementById('stageDiff');
+    const heightPercent = document.getElementById('heightPercent');
+    const progressBar = document.getElementById('progressBar');
+    const timerText = document.getElementById('timerText');
+    const stageBanner = document.getElementById('stageBanner');
+    const bannerTitle = document.getElementById('bannerTitle');
+    const bannerSub = document.getElementById('bannerSub');
+    const startOverlay = document.getElementById('startOverlay');
+    const victoryOverlay = document.getElementById('victoryOverlay');
+    const stageModal = document.getElementById('stageModal');
+    const stageButtonsGrid = document.getElementById('stageButtonsGrid');
+
+    // حالة اللعبة
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let platforms = createLevelPlatforms();
+    let particles = [];
+    let hammerTrail = [];
+    let stars = [];
+    let clouds = [];
+
+    let gameStarted = false;
+    let gameWon = false;
+    let currentStageId = 1;
+    let highestStageReached = 1;
+    let startTime = 0;
+    let elapsedSeconds = 0;
+    let hammerHits = 0;
+
+    // كائن اللاعب (القدر + المتسلق)
+    const player = {
+      x: 0,
+      y: -90,
+      vx: 0,
+      vy: 0,
+      radius: 28,
+      angle: 0,
+      angularVel: 0,
+      grounded: false
+    };
+
+    // كائن المطرقة (تتحرك بسلاسة نحو مؤشر الفأرة/اللمس وتدفع اللاعب عند الاصطدام)
+    const hammer = {
+      angle: -Math.PI / 4,
+      length: 118,
+      minLen: 68,
+      maxLen: 145,
+      headX: 0,
+      headY: -180,
+      prevHeadX: 0,
+      prevHeadY: -180,
+      headRadius: 15,
+      isAnchored: false,
+      anchoredPlatform: null,
+      anchorLocalX: 0,
+      anchorLocalY: 0
+    };
+
+    // موقع المؤشر في إحداثيات الشاشة
+    const pointer = {
+      x: width / 2 + 80,
+      y: height / 2 - 80,
+      active: false
+    };
+
+    // الكاميرا
+    const camera = {
+      x: 0,
+      y: -250,
+      shake: 0
+    };
+
+    // تهيئة النجوم والغيوم الخلفية
+    function initEnvironmentDecor() {
+      stars = [];
+      for (let i = 0; i < 110; i++) {
+        stars.push({
+          x: (Math.random() - 0.5) * 2400,
+          y: -4500 - Math.random() * 6500,
+          r: Math.random() * 2 + 0.6,
+          alpha: Math.random() * 0.8 + 0.2
+        });
+      }
+
+      clouds = [];
+      for (let i = 0; i < 28; i++) {
+        clouds.push({
+          x: (Math.random() - 0.5) * 2200,
+          y: -300 - Math.random() * 8800,
+          w: 120 + Math.random() * 140,
+          speed: 0.15 + Math.random() * 0.25
+        });
+      }
+    }
+
+    // ضبط أبعاد الكانفاس عند تغيير حجم الشاشة
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    initEnvironmentDecor();
+
+    // تعبئة أزرار اختيار المراحل
+    function buildStageModal() {
+      stageButtonsGrid.innerHTML = '';
+      STAGES.forEach((st) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-game text-right p-4 rounded-2xl bg-slate-800/90 hover:bg-slate-700 border border-white/10 flex flex-col gap-1';
+        btn.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="font-black text-amber-400 text-sm">${st.name}</span>
+            <span class="text-xs px-2 py-0.5 rounded-lg bg-white/10 text-slate-200">مرحلة ${st.id}</span>
+          </div>
+          <div class="text-xs text-slate-300">${st.difficulty}</div>
+        `;
+        btn.addEventListener('click', () => {
+          teleportToStage(st.id);
+          stageModal.classList.add('hidden');
+        });
+        stageButtonsGrid.appendChild(btn);
+      });
+    }
+    buildStageModal();
+
+    // إظهار لافتة المرحلة عند الدخول لمرحلة جديدة
+    let bannerTimeout = null;
+    function showStageBanner(stageObj) {
+      bannerTitle.textContent = stageObj.name;
+      bannerSub.textContent = stageObj.hint;
+      stageBanner.classList.remove('hidden', 'stage-banner-anim');
+      void stageBanner.offsetWidth; // إعادة تشغيل الأنيميشن
+      stageBanner.classList.add('stage-banner-anim');
+
+      if (bannerTimeout) clearTimeout(bannerTimeout);
+      bannerTimeout = setTimeout(() => {
+        stageBanner.classList.add('hidden');
+      }, 3700);
+    }
+
+    // الانتقال إلى بداية مرحلة محددة
+    function teleportToStage(stageId) {
+      const st = STAGES.find(s => s.id === stageId) || STAGES[0];
+      player.x = st.spawn.x;
+      player.y = st.spawn.y;
+      player.vx = 0;
+      player.vy = 0;
+      player.angle = 0;
+      player.angularVel = 0;
+      hammer.isAnchored = false;
+      hammer.anchoredPlatform = null;
+      hammer.headX = player.x + 70;
+      hammer.headY = player.y - 70;
+      camera.x = player.x;
+      camera.y = player.y - 120;
+      gameWon = false;
+      victoryOverlay.classList.add('hidden');
+      updateStageHUD(stageId, true);
+    }
+
+    // إعادة اللعبة كاملة من الصفر
+    function resetFullGame() {
+      platforms = createLevelPlatforms();
+      particles = [];
+      hammerTrail = [];
+      hammerHits = 0;
+      startTime = performance.now();
+      elapsedSeconds = 0;
+      currentStageId = 1;
+      highestStageReached = 1;
+      teleportToStage(1);
+    }
+
+    // تحديث واجهة المرحلة
+    function updateStageHUD(stageId, forceBanner = false) {
+      const st = STAGES.find(s => s.id === stageId) || STAGES[0];
+      if (currentStageId !== stageId || forceBanner) {
+        currentStageId = stageId;
+        stageBadge.textContent = st.id;
+        stageBadge.className = `inline-flex items-center justify-center w-8 h-8 rounded-xl ${st.badgeColor} text-slate-950 font-black text-base shadow`;
+        stageTitle.textContent = st.name;
+        stageDiff.textContent = st.difficulty;
+
+        if (stageId > highestStageReached) {
+          highestStageReached = stageId;
+          sound.playStageUp();
+        }
+        showStageBanner(st);
+      }
+    }
+
+    // إضافة جزيئات شرار/ثلج/غبار عند الضرب
+    function spawnParticles(x, y, color, count = 10) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 1.5 + Math.random() * 4.5;
+        particles.push({
+          x,
+          y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 1.5,
+          life: 1,
+          decay: 0.025 + Math.random() * 0.03,
+          size: 2.5 + Math.random() * 3.5,
+          color
+        });
+      }
+    }
+
+    /**
+     * =========================================================================
+     * أحداث الفأرة واللمس للتحكم بالمطرقة
+     * =========================================================================
+     */
+    function updatePointerPosition(clientX, clientY) {
+      pointer.x = clientX;
+      pointer.y = clientY;
+      pointer.active = true;
+    }
+
+    window.addEventListener('mousemove', (e) => {
+      updatePointerPosition(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length > 0) {
+        sound.init();
+        updatePointerPosition(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 0) {
+        updatePointerPosition(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: true });
+
+    // أزرار الواجهة
+    document.getElementById('startGameBtn').addEventListener('click', () => {
+      sound.init();
+      sound.playStageUp();
+      startOverlay.classList.add('hidden');
+      gameStarted = true;
+      resetFullGame();
+    });
+
+    document.getElementById('playAgainBtn').addEventListener('click', () => {
+      sound.init();
+      victoryOverlay.classList.add('hidden');
+      gameWon = false;
+      resetFullGame();
+    });
+
+    document.getElementById('soundToggleBtn').addEventListener('click', () => {
+      const isMuted = sound.toggleMute();
+      document.getElementById('soundIcon').textContent = isMuted ? '🔇' : '🔊';
+    });
+
+    document.getElementById('stageSelectToggleBtn').addEventListener('click', () => {
+      stageModal.classList.remove('hidden');
+    });
+
+    document.getElementById('closeStageModalBtn').addEventListener('click', () => {
+      stageModal.classList.add('hidden');
+    });
+
+    document.getElementById('checkpointBtn').addEventListener('click', () => {
+      teleportToStage(currentStageId);
+    });
+
+    document.getElementById('restartBtn').addEventListener('click', () => {
+      resetFullGame();
+    });
+
+    /**
+     * =========================================================================
+     * حساب التصادم بين دائرة ومستطيل (للمطرقة والقدر)
+     * =========================================================================
+     */
+    function circleRectCollision(cx, cy, cr, rx, ry, rw, rh) {
+      const closestX = Math.max(rx, Math.min(cx, rx + rw));
+      const closestY = Math.max(ry, Math.min(cy, ry + rh));
+      const dx = cx - closestX;
+      const dy = cy - closestY;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < cr * cr) {
+        const dist = Math.sqrt(distSq) || 0.001;
+        const overlap = cr - dist;
+        return {
+          hit: true,
+          nx: dx / dist,
+          ny: dy / dist,
+          overlap,
+          contactX: closestX,
+          contactY: closestY
+        };
+      }
+      return { hit: false };
+    }
+
+    /**
+     * =========================================================================
+     * التحديث الفيزيائي في كل إطار (Physics Step)
+     * =========================================================================
+     */
+    function updatePhysics(dt) {
+      if (!gameStarted || gameWon) return;
+
+      // تحديث المؤقت
+      elapsedSeconds = Math.floor((performance.now() - startTime) / 1000);
+      const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+      const secs = String(elapsedSeconds % 60).padStart(2, '0');
+      timerText.textContent = `${mins}:${secs}`;
+
+      // تحريك المنصات المتحركة في المرحلة 4
+      const timeSec = performance.now() * 0.001;
+      for (const p of platforms) {
+        if (p.moveX) {
+          const prevX = p.x;
+          p.x = p.baseX + Math.sin(timeSec * p.moveSpeed) * p.moveX;
+          p.dx = p.x - prevX;
+        } else {
+          p.dx = 0;
+        }
+      }
+
+      // 1. الجاذبية ومقاومة الهواء للقدر
+      const gravity = 0.46;
+      player.vy += gravity;
+      player.vx *= 0.985;
+      player.vy *= 0.992;
+
+      // توازن زاوية القدر تدريجياً
+      player.angularVel += -player.angle * 0.04;
+      player.angularVel *= 0.85;
+      player.angle += player.angularVel;
+
+      // 2. حساب الهدف المطلوب للمطرقة انطلاقاً من المؤشر
+      const worldMouseX = pointer.x - width / 2 + camera.x;
+      const worldMouseY = pointer.y - height / 2 + camera.y;
+
+      const pivotX = player.x;
+      const pivotY = player.y - 12; // نقطة إمساك اللاعب بالمطرقة
+
+      const toMouseX = worldMouseX - pivotX;
+      const toMouseY = worldMouseY - pivotY;
+      const rawDist = Math.hypot(toMouseX, toMouseY);
+      const targetAngle = Math.atan2(toMouseY, toMouseX);
+      const targetLen = Math.max(hammer.minLen, Math.min(hammer.maxLen, rawDist));
+
+      const desiredHeadX = pivotX + Math.cos(targetAngle) * targetLen;
+      const desiredHeadY = pivotY + Math.sin(targetAngle) * targetLen;
+
+      hammer.prevHeadX = hammer.headX;
+      hammer.prevHeadY = hammer.headY;
+
+      // استجابة سلسة وسريعة للمطرقة
+      const stiffness = 0.34;
+      hammer.headX += (desiredHeadX - hammer.headX) * stiffness;
+      hammer.headY += (desiredHeadY - hammer.headY) * stiffness;
+
+      const swingSpeed = Math.hypot(hammer.headX - hammer.prevHeadX, hammer.headY - hammer.prevHeadY);
+      if (swingSpeed > 24 && !hammer.isAnchored) {
+        sound.playWhoosh();
+      }
+
+      // 3. تصادم رأس المطرقة مع المنصات وتوليد رد الفعل الفيزيائي (الدفع والتعلق)
+      let hitAnyPlatform = false;
+
+      for (const p of platforms) {
+        const col = circleRectCollision(
+          hammer.headX,
+          hammer.headY,
+          hammer.headRadius,
+          p.x,
+          p.y,
+          p.w,
+          p.h
+        );
+
+        if (col.hit) {
+          hitAnyPlatform = true;
+
+          // إخراج رأس المطرقة خارج الصخرة
+          hammer.headX += col.nx * col.overlap;
+          hammer.headY += col.ny * col.overlap;
+
+          // إذا كانت منصة متحركة، تتبعها المطرقة
+          if (p.dx) {
+            hammer.headX += p.dx;
+          }
+
+          // حساب فرق القوة بين رغبة اللاعب في تحريك المطرقة وموقع الاصطدام الفعلي
+          const pushX = desiredHeadX - hammer.headX;
+          const pushY = desiredHeadY - hammer.headY;
+
+          // معامل الاحتكاك حسب نوع السطح (الجليد زلق، الخشب والصخر يمسكان بقوة)
+          const grip = p.type === 'ice' ? 0.25 : (p.type === 'wood' ? 0.92 : 0.82);
+
+          // صوت الضربة الأولى عند ملامسة السطح
+          if (!hammer.isAnchored && swingSpeed > 4.5) {
+            hammerHits++;
+            const impactForce = Math.min(1, swingSpeed / 22);
+            sound.playImpact(p.type, impactForce);
+            camera.shake = Math.min(8, impactForce * 6);
+
+            const sparkColor = p.type === 'ice' ? '#bae6fd' : (p.type === 'gold' ? '#fde047' : '#fbbf24');
+            spawnParticles(col.contactX, col.contactY, sparkColor, Math.floor(6 + impactForce * 8));
+          } else if (swingSpeed > 2.2) {
+            sound.playScrape(swingSpeed);
+          }
+
+          // تطبيق رد الفعل العكسي على القدر:
+          // عندما يضغط اللاعب المطرقة نحو الأسفل أو نحو حافة، يندفع القدر في الاتجاه المعاكس!
+          const reactionPower = 0.22;
+          // مركبة الدفع العمودية على السطح + مركبة التعلق الاحتكاكي
+          const normalForce = pushX * col.nx + pushY * col.ny;
+          if (normalForce < 0) {
+            // المطرقة تضغط داخل السطح -> ادفع اللاعب بعيداً عن السطح
+            player.vx -= col.nx * normalForce * reactionPower * 1.15;
+            player.vy -= col.ny * normalForce * reactionPower * 1.15;
+          }
+
+          // قوة السحب والتعلق (Hooking / Friction)
+          const tangentX = -col.ny;
+          const tangentY = col.nx;
+          const tangentForce = pushX * tangentX + pushY * tangentY;
+          player.vx -= tangentX * tangentForce * reactionPower * grip;
+          player.vy -= tangentY * tangentForce * reactionPower * grip;
+
+          // دوران طفيف للقدر لإعطاء إحساس بالوزن والزخم
+          player.angularVel += (-pushX * 0.00045);
+
+          hammer.isAnchored = true;
+          hammer.anchoredPlatform = p;
+          break;
+        }
+      }
+
+      if (!hitAnyPlatform) {
+        hammer.isAnchored = false;
+        hammer.anchoredPlatform = null;
+      }
+
+      // تقييد طول مقبض المطرقة الأقصى حتى لا ينفصل عن اللاعب
+      const currentDx = hammer.headX - pivotX;
+      const currentDy = hammer.headY - pivotY;
+      const currentDist = Math.hypot(currentDx, currentDy) || 1;
+      if (currentDist > hammer.maxLen) {
+        const pullBack = currentDist - hammer.maxLen;
+        const dirX = currentDx / currentDist;
+        const dirY = currentDy / currentDist;
+
+        if (hammer.isAnchored) {
+          // المطرقة عالقة في صخرة -> اسحب اللاعب نحو المطرقة!
+          player.vx += dirX * pullBack * 0.35;
+          player.vy += dirY * pullBack * 0.35;
+        } else {
+          hammer.headX = pivotX + dirX * hammer.maxLen;
+          hammer.headY = pivotY + dirY * hammer.maxLen;
+        }
+      }
+
+      hammer.angle = Math.atan2(hammer.headY - pivotY, hammer.headX - pivotX);
+
+      // 4. تحديث موقع اللاعب وحل التصادم بين القدر والمنصات
+      player.x += player.vx;
+      player.y += player.vy;
+      player.grounded = false;
+
+      // حدود أفقية واسعة حتى لا يضيع اللاعب في الفراغ بعيداً عن الجبل
+      if (player.x < -760) {
+        player.x = -760;
+        player.vx *= -0.4;
+      } else if (player.x > 760) {
+        player.x = 760;
+        player.vx *= -0.4;
+      }
+
+      for (const p of platforms) {
+        const col = circleRectCollision(
+          player.x,
+          player.y,
+          player.radius,
+          p.x,
+          p.y,
+          p.w,
+          p.h
+        );
+
+        if (col.hit) {
+          player.x += col.nx * col.overlap;
+          player.y += col.ny * col.overlap;
+
+          // احتكاك القدر بالسطح
+          const surfaceFriction = p.type === 'ice' ? 0.985 : 0.82;
+          if (col.ny < -0.5) {
+            player.grounded = true;
+            if (p.dx) player.x += p.dx;
+            player.vx *= surfaceFriction;
+            if (player.vy > 0) player.vy = 0;
+
+            // التحقق من الوصول للقمة!
+            if (p.isSummit && !gameWon) {
+              triggerVictory();
+            }
+          } else {
+            // ارتداد خفيف عند الاصطدام الجانبي أو السفلي
+            const vn = player.vx * col.nx + player.vy * col.ny;
+            if (vn < 0) {
+              player.vx -= 1.25 * vn * col.nx;
+              player.vy -= 1.25 * vn * col.ny;
+            }
+          }
+        }
+      }
+
+      // تحديث أثر حركة المطرقة
+      hammerTrail.push({ x: hammer.headX, y: hammer.headY, alpha: 0.55 });
+      if (hammerTrail.length > 10) hammerTrail.shift();
+      for (const t of hammerTrail) t.alpha *= 0.86;
+
+      // تحديث الجزيئات
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const pt = particles[i];
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.15;
+        pt.life -= pt.decay;
+        if (pt.life <= 0) particles.splice(i, 1);
+      }
+
+      // 5. تحديث الكاميرا بسلاسة
+      const targetCamX = player.x * 0.65;
+      const targetCamY = player.y - 110;
+      camera.x += (targetCamX - camera.x) * 0.08;
+      camera.y += (targetCamY - camera.y) * 0.09;
+      if (camera.shake > 0) camera.shake *= 0.85;
+
+      // 6. تحديد المرحلة الحالية ونسبة التقدم نحو القمة
+      const progress = Math.max(0, Math.min(100, Math.round((Math.abs(player.y) / Math.abs(SUMMIT_Y)) * 100)));
+      heightPercent.textContent = `${progress}%`;
+      progressBar.style.width = `${progress}%`;
+
+      let detectedStage = 1;
+      for (const st of STAGES) {
+        if (player.y <= st.startY + 80) {
+          detectedStage = st.id;
+        }
+      }
+      if (detectedStage !== currentStageId) {
+        updateStageHUD(detectedStage, false);
+      }
+    }
+
+    function triggerVictory() {
+      gameWon = true;
+      sound.playVictory();
+      spawnParticles(player.x, player.y - 40, '#fde047', 45);
+      document.getElementById('finalTimeText').textContent = timerText.textContent;
+      document.getElementById('finalHitsText').textContent = hammerHits;
+      setTimeout(() => {
+        victoryOverlay.classList.remove('hidden');
+      }, 650);
+    }
+
+    /**
+     * =========================================================================
+     * الرسم البصري على اللوحة (Canvas Rendering)
+     * =========================================================================
+     */
+    function render() {
+      const stageObj = STAGES.find(s => s.id === currentStageId) || STAGES[0];
+
+      // 1. رسم السماء المتدرجة حسب المرحلة الحالية
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+      skyGrad.addColorStop(0, stageObj.skyTop);
+      skyGrad.addColorStop(1, stageObj.skyBottom);
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // رسم النجوم في المراحل العليا (المرحلة 3 و 4)
+      if (currentStageId >= 3) {
+        const starOpacity = currentStageId === 4 ? 0.95 : 0.45;
+        for (const s of stars) {
+          const sx = (s.x - camera.x * 0.15 + width / 2) % width;
+          const sy = ((s.y - camera.y * 0.15) % height + height) % height;
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha * starOpacity})`;
+          ctx.beginPath();
+          ctx.arc(sx < 0 ? sx + width : sx, sy, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // رسم جبال خلفية بعيدة (Parallax)
+      drawParallaxMountains(stageObj.mountainColor);
+
+      // تطبيق تحويل الكاميرا مع الاهتزاز الخفيف عند الضرب
+      ctx.save();
+      const shakeX = camera.shake ? (Math.random() - 0.5) * camera.shake : 0;
+      const shakeY = camera.shake ? (Math.random() - 0.5) * camera.shake : 0;
+      ctx.translate(width / 2 - camera.x + shakeX, height / 2 - camera.y + shakeY);
+
+      // 2. رسم الغيوم العابرة
+      for (const c of clouds) {
+        c.x += c.speed;
+        if (c.x > 1100) c.x = -1100;
+        if (Math.abs(c.y - camera.y) < height) {
+          drawCloud(c.x, c.y, c.w);
+        }
+      }
+
+      // 3. رسم خطوط الارتفاع الإرشادية وعلامات المراحل
+      drawStageMarkers();
+
+      // 4. رسم المنصات والصخور والجليد
+      for (const p of platforms) {
+        if (p.y + p.h < camera.y - height || p.y > camera.y + height) continue;
+        drawPlatform(p);
+      }
+
+      // 5. رسم أثر حركة المطرقة
+      for (let i = 1; i < hammerTrail.length; i++) {
+        const t1 = hammerTrail[i - 1];
+        const t2 = hammerTrail[i];
+        ctx.strokeStyle = `rgba(251, 191, 36, ${t2.alpha * 0.45})`;
+        ctx.lineWidth = i * 1.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(t1.x, t1.y);
+        ctx.lineTo(t2.x, t2.y);
+        ctx.stroke();
+      }
+
+      // 6. رسم اللاعب داخل القدر والمطرقة
+      drawPlayerAndHammer();
+
+      // 7. رسم الجزيئات المتطايرة
+      for (const pt of particles) {
+        ctx.globalAlpha = Math.max(0, pt.life);
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.restore();
+    }
+
+    function drawParallaxMountains(color) {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      const offset = (camera.x * 0.12) % 400;
+      for (let x = -400; x <= width + 400; x += 200) {
+        const peakH = 180 + Math.abs(Math.sin((x + offset) * 0.005)) * 160;
+        ctx.lineTo(x - offset, height - peakH);
+      }
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawCloud(x, y, w) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.beginPath();
+      ctx.arc(x, y, w * 0.25, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.22, y - w * 0.08, w * 0.3, 0, Math.PI * 2);
+      ctx.arc(x + w * 0.48, y, w * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawStageMarkers() {
+      ctx.save();
+      ctx.font = 'bold 18px Cairo, sans-serif';
+      ctx.textAlign = 'center';
+
+      STAGES.forEach((st) => {
+        if (st.id === 1) return;
+        const y = st.startY;
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)';
+        ctx.setLineDash([10, 10]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-420, y);
+        ctx.lineTo(420, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.85)';
+        ctx.fillText(`🚩 ${st.name}`, 0, y - 14);
+      });
+      ctx.restore();
+    }
+
+    function drawPlatform(p) {
+      ctx.save();
+      const radius = 12;
+
+      if (p.type === 'ice') {
+        // منصة جليدية زرقاء لامعة
+        const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+        grad.addColorStop(0, '#e0f2fe');
+        grad.addColorStop(0.3, '#38bdf8');
+        grad.addColorStop(1, '#0284c7');
+        ctx.fillStyle = grad;
+        roundRect(ctx, p.x, p.y, p.w, p.h, radius);
+        ctx.fill();
+
+        ctx.strokeStyle = '#bae6fd';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (p.type === 'wood') {
+        // منصة خشبية دافئة ذات احتكاك عالٍ
+        const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+        grad.addColorStop(0, '#b45309');
+        grad.addColorStop(1, '#78350f');
+        ctx.fillStyle = grad;
+        roundRect(ctx, p.x, p.y, p.w, p.h, radius);
+        ctx.fill();
+
+        // خطوط الخشب
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (p.type === 'gold') {
+        // منصة القمة الذهبية + الكأس والعلم
+        const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+        grad.addColorStop(0, '#fef08a');
+        grad.addColorStop(0.5, '#f59e0b');
+        grad.addColorStop(1, '#b45309');
+        ctx.fillStyle = grad;
+        roundRect(ctx, p.x, p.y, p.w, p.h, 16);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // رسم سارية العلم الذهبي والكأس فوق القمة
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(-6, p.y - 120, 12, 120);
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(6, p.y - 120);
+        ctx.lineTo(95, p.y - 95);
+        ctx.lineTo(6, p.y - 70);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.font = 'bold 24px Cairo, sans-serif';
+        ctx.fillStyle = '#fef08a';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏆 القمة النهائية 🏆', 0, p.y - 135);
+      } else {
+        // صخرة جبلية
+        const grad = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+        grad.addColorStop(0, '#64748b');
+        grad.addColorStop(0.25, '#475569');
+        grad.addColorStop(1, '#1e293b');
+        ctx.fillStyle = grad;
+        roundRect(ctx, p.x, p.y, p.w, p.h, radius);
+        ctx.fill();
+
+        // حافة عشب أو ثلج خفيفة في أعلى الصخرة حسب المرحلة
+        ctx.fillStyle = p.stage >= 3 ? '#f1f5f9' : '#22c55e';
+        roundRect(ctx, p.x + 3, p.y, p.w - 6, 8, 5);
+        ctx.fill();
+
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // رسم راية نقطة حفظ المرحلة إن وجدت
+      if (p.checkpoint) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(p.x + 28, p.y - 52, 5, 52);
+        ctx.beginPath();
+        ctx.moveTo(p.x + 33, p.y - 52);
+        ctx.lineTo(p.x + 75, p.y - 38);
+        ctx.lineTo(p.x + 33, p.y - 24);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function drawPlayerAndHammer() {
+      const pivotX = player.x;
+      const pivotY = player.y - 12;
+
+      // 1. رسم مقبض المطرقة الخشبي
+      ctx.save();
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(pivotX, pivotY);
+      ctx.lineTo(hammer.headX, hammer.headY);
+      ctx.stroke();
+
+      // خط إضاءة على المقبض
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(pivotX, pivotY);
+      ctx.lineTo(hammer.headX, hammer.headY);
+      ctx.stroke();
+
+      // 2. رسم رأس المطرقة الفولاذي الثقيل
+      ctx.translate(hammer.headX, hammer.headY);
+      ctx.rotate(hammer.angle);
+
+      // رأس المطرقة المعدني
+      const headGrad = ctx.createLinearGradient(-12, -22, 12, 22);
+      headGrad.addColorStop(0, '#f8fafc');
+      headGrad.addColorStop(0.5, '#94a3b8');
+      headGrad.addColorStop(1, '#334155');
+      ctx.fillStyle = headGrad;
+      roundRect(ctx, -11, -24, 22, 48, 5);
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // حلقة توهج عند التصادم
+      if (hammer.isAnchored) {
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, hammer.headRadius + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 3. رسم المتسلق داخل القدر الحديدي
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(player.angle);
+
+      // جذع المتسلق
+      ctx.fillStyle = '#f59e0b';
+      roundRect(ctx, -14, -36, 28, 28, 10);
+      ctx.fill();
+
+      // رأس المتسلق وعمامته/قبعته
+      ctx.fillStyle = '#fed7aa';
+      ctx.beginPath();
+      ctx.arc(0, -46, 13, 0, Math.PI * 2);
+      ctx.fill();
+
+      // عصابة رأس حمراء للمغامر
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(-13, -53, 26, 6);
+
+      // العيون تتجه نحو المطرقة
+      const lookDir = Math.cos(hammer.angle) >= 0 ? 4 : -4;
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(lookDir - 3, -45, 2.2, 0, Math.PI * 2);
+      ctx.arc(lookDir + 4, -45, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // الذراعان ممدودتان نحو مقبض المطرقة
+      ctx.strokeStyle = '#fed7aa';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, -24);
+      ctx.lineTo(Math.cos(hammer.angle - player.angle) * 26, -12 + Math.sin(hammer.angle - player.angle) * 26);
+      ctx.stroke();
+
+      // القدر الحديدي الكبير (Cauldron)
+      const potGrad = ctx.createRadialGradient(-8, -4, 4, 0, 4, player.radius + 4);
+      potGrad.addColorStop(0, '#475569');
+      potGrad.addColorStop(0.6, '#1e293b');
+      potGrad.addColorStop(1, '#090d16');
+
+      ctx.fillStyle = potGrad;
+      ctx.beginPath();
+      ctx.arc(0, 2, player.radius, 0, Math.PI, false);
+      ctx.lineTo(-player.radius - 3, -12);
+      ctx.lineTo(player.radius + 3, -12);
+      ctx.closePath();
+      ctx.fill();
+
+      // حافة القدر العلوية السميكة
+      ctx.fillStyle = '#334155';
+      roundRect(ctx, -player.radius - 4, -15, (player.radius + 4) * 2, 8, 4);
+      ctx.fill();
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
+    }
+
+    /**
+     * =========================================================================
+     * حلقة اللعبة الرئيسية (Game Loop)
+     * =========================================================================
+     */
+    let lastFrameTime = 0;
+    function gameLoop(timestamp) {
+      const dt = Math.min(0.05, (timestamp - lastFrameTime) / 1000 || 0.016);
+      lastFrameTime = timestamp;
+
+      updatePhysics(dt);
+      render();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.onload = function () {
+      requestAnimationFrame(gameLoop);
+    };
+  </script>
+</body>
+</html>
